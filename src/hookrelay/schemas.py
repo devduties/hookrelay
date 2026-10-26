@@ -40,6 +40,7 @@ class EventView(BaseModel):
     status: Literal["pending", "delivered", "failed"]
     attempt_count: int
     next_attempt_at: datetime | None = None
+    source_event_id: str | None = None
 
 
 class AttemptView(BaseModel):

@@ -66,6 +66,7 @@ async def ingest_event(endpoint_id: str, body: EventCreate, request: Request):
         status=event.status,
         attempt_count=event.attempt_count,
         next_attempt_at=event.next_attempt_at,
+        source_event_id=event.source_event_id,
         attempts=[],
     )
 
@@ -84,5 +85,29 @@ def get_event(event_id: str, request: Request):
         status=event.status,
         attempt_count=event.attempt_count,
         next_attempt_at=event.next_attempt_at,
+        source_event_id=event.source_event_id,
         attempts=[AttemptView.model_validate(attempt) for attempt in store.list_attempts(event_id)],
+    )
+
+
+@router.post(
+    "/events/{event_id}/replay",
+    response_model=EventResult,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+def replay_event(event_id: str, request: Request):
+    store = request.app.state.store
+    try:
+        event = store.replay_event(event_id)
+    except NotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return EventResult(
+        id=event.id,
+        endpoint_id=event.endpoint_id,
+        received_at=event.received_at,
+        status=event.status,
+        attempt_count=event.attempt_count,
+        next_attempt_at=event.next_attempt_at,
+        source_event_id=event.source_event_id,
+        attempts=[],
     )

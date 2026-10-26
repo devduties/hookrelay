@@ -50,7 +50,8 @@ class Store:
                     attempt_count INTEGER NOT NULL DEFAULT 0,
                     next_attempt_at TEXT,
                     last_error TEXT,
-                    locked_until TEXT
+                    locked_until TEXT,
+                    source_event_id TEXT REFERENCES events(id)
                 );
                 CREATE TABLE IF NOT EXISTS attempts (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -68,6 +69,13 @@ class Store:
             columns = {row["name"] for row in connection.execute("PRAGMA table_info(events)")}
             if "locked_until" not in columns:
                 connection.execute("ALTER TABLE events ADD COLUMN locked_until TEXT")
+            if "source_event_id" not in columns:
+                connection.execute(
+                    "ALTER TABLE events ADD COLUMN source_event_id TEXT REFERENCES events(id)"
+                )
+            connection.execute(
+                "CREATE INDEX IF NOT EXISTS idx_events_source ON events(source_event_id)"
+            )
 
     def create_endpoint(self, name: str, target_url: str, secret: str) -> Endpoint:
         endpoint = Endpoint(uuid4().hex, name, target_url, secret, datetime.now(UTC), True)
@@ -110,20 +118,57 @@ class Store:
             "pending",
             0,
             None,
+            None,
         )
         with self._connect() as connection:
             connection.execute(
                 "INSERT INTO events "
-                "(id, endpoint_id, payload_json, received_at, status) VALUES (?, ?, ?, ?, ?)",
+                "(id, endpoint_id, payload_json, received_at, status, source_event_id) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
                 (
                     event.id,
                     event.endpoint_id,
                     event.payload_json,
                     event.received_at.isoformat(),
                     event.status,
+                    event.source_event_id,
                 ),
             )
         return event
+
+    def replay_event(self, event_id: str) -> Event:
+        """Create a fresh pending event linked to an existing event without changing it."""
+        replay_id = uuid4().hex
+        received_at = datetime.now(UTC)
+        with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            original = connection.execute(
+                "SELECT endpoint_id, payload_json FROM events WHERE id = ?", (event_id,)
+            ).fetchone()
+            if original is None:
+                raise NotFoundError("Event not found")
+            connection.execute(
+                "INSERT INTO events "
+                "(id, endpoint_id, payload_json, received_at, status, source_event_id) "
+                "VALUES (?, ?, ?, ?, 'pending', ?)",
+                (
+                    replay_id,
+                    original["endpoint_id"],
+                    original["payload_json"],
+                    received_at.isoformat(),
+                    event_id,
+                ),
+            )
+        return Event(
+            replay_id,
+            original["endpoint_id"],
+            original["payload_json"],
+            received_at,
+            "pending",
+            0,
+            None,
+            event_id,
+        )
 
     def get_event(self, event_id: str) -> Event:
         with self._connect() as connection:
@@ -141,6 +186,7 @@ class Store:
             row["status"],
             row["attempt_count"],
             next_attempt,
+            row["source_event_id"],
         )
 
     def record_attempt(

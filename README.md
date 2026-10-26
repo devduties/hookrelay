@@ -6,6 +6,7 @@ HookRelay is a small webhook delivery service built to make integrations observa
 
 - Register endpoints with a provided secret or a generated one (shown only in the create response).
 - Accept JSON events quickly and queue delivery in the background.
+- Replay events as new rows with their own IDs and attempt histories.
 - Retry network errors, HTTP 408, HTTP 429, and HTTP 5xx responses up to five total attempts.
 - Use exponential retry delays beginning at 5 seconds and capped at 5 minutes.
 - Treat other non-2xx responses as terminal failures.
@@ -56,6 +57,12 @@ The receiver verifies the signature by computing `HMAC-SHA256(secret, raw_reques
 ## Retry behavior
 
 The first delivery is attempt one. Transient failures are retried after 5, 10, 20, and 40 seconds. A successful 2xx response marks the event `delivered`. A network error, 408, 429, or 5xx response keeps it `pending` until the next due attempt. Other responses, including other 3xx and 4xx statuses, mark it `failed`. After the fifth failed attempt, the event is terminally `failed`.
+
+## Replay events
+
+Call `POST /v1/events/{event_id}/replay` to replay an event in any status. HookRelay creates a new pending event with a fresh ID, copies the original endpoint and exact stored payload JSON, and records the source event ID in `source_event_id`. It returns `202 Accepted` with the new event. The original event and its attempts remain unchanged.
+
+Replaying a pending or delivered event can cause the receiver to process the same logical event more than once. Receivers should use an idempotency key or another deduplication strategy when duplicate processing is unsafe.
 
 ## Development
 

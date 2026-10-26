@@ -24,6 +24,7 @@ class Event:
     status: EventStatus
     attempt_count: int
     next_attempt_at: datetime | None
+    source_event_id: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
