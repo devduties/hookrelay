@@ -60,7 +60,9 @@ The first delivery is attempt one. Transient failures are retried after 5, 10, 2
 
 ## Replay events
 
-Call `POST /v1/events/{event_id}/replay` to replay an event in any status. HookRelay creates a new pending event with a fresh ID, copies the original endpoint and exact stored payload JSON, and records the source event ID in `source_event_id`. It returns `202 Accepted` with the new event. The original event and its attempts remain unchanged.
+Call `POST /v1/events/{event_id}/replay` to replay an event in any status. A replay always creates a new pending event with a fresh ID; it never resets or otherwise modifies the source event. The new event copies the source event's endpoint and exact stored payload JSON, starts with `attempt_count = 0`, and records the source event's ID in `source_event_id`. The API returns `202 Accepted` with the new event.
+
+The worker delivers a replay just like a newly submitted event. It gets its own delivery attempts and status, while the source event and its attempt history remain unchanged. Replays can be chained: replaying a replay creates another new event whose `source_event_id` points to the immediately preceding event, so each event preserves its own place in the replay chain.
 
 Replaying a pending or delivered event can cause the receiver to process the same logical event more than once. Receivers should use an idempotency key or another deduplication strategy when duplicate processing is unsafe.
 
