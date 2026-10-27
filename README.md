@@ -70,7 +70,7 @@ HookRelay tries delivery up to five times. The first attempt fires immediately; 
 
 To redeliver a past event, call `POST /v1/events/{event_id}/replay`. It works on any event regardless of its current status. A replay always creates a new pending event with a fresh ID; it never resets or otherwise modifies the source event. The new event uses the same endpoint and payload, starts fresh with zero attempts, and records the source event's ID in `source_event_id`. The API returns `202 Accepted` with the new event.
 
-The worker delivers a replay just like a newly submitted event. It gets its own delivery attempts and status, while the source event and its attempt history remain unchanged. Replays can be chained: replaying a replay creates another new event whose `source_event_id` points to the immediately preceding event, so each event preserves its own place in the replay chain.
+The worker delivers a replay just like a newly submitted event. It gets its own delivery attempts and status, while the source event and its attempt history remain unchanged. Replays can be chained -- replaying a replay creates another new event with its own `source_event_id` pointing to the one before it.
 
 If your receiver can't safely process the same event twice, make sure to check for duplicates before acting on a replayed event.
 
