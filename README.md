@@ -1,5 +1,7 @@
 # HookRelay
 
+[![CI](https://github.com/devduties/hookrelay/actions/workflows/ci.yml/badge.svg)](https://github.com/devduties/hookrelay/actions/workflows/ci.yml)
+
 HookRelay is a small self-hosted service that receives webhook events, delivers them to a registered URL, and keeps a record of every attempt so you can see exactly what was sent, what succeeded, and what failed.
 
 ## Features
@@ -10,13 +12,13 @@ HookRelay is a small self-hosted service that receives webhook events, delivers 
 - Retry network errors, HTTP 408, HTTP 429, and HTTP 5xx responses up to five total attempts.
 - Use exponential retry delays beginning at 5 seconds and capped at 5 minutes.
 - Treat other non-2xx responses as terminal failures.
-- Lease due events in SQLite so concurrent workers do not claim the same event at once; a crashed worker's lease expires.
-- Send `X-HookRelay-Signature` as a lowercase hexadecimal HMAC-SHA256 digest of the exact body bytes.
+- Claims due events in SQLite so concurrent workers don't claim the same event while its lease is active; expired leases allow recovery after a crash.
+- Sends `X-HookRelay-Signature` as an HMAC-SHA256 signature of the request body.
 - Record every delivery attempt with its status code, response body (up to 4 KB), error message, and elapsed time.
 - Reject endpoints that resolve to loopback, private, or reserved IP addresses; HTTP redirects are not followed.
 - Optionally protect every `/v1/` route with a Bearer API key configured through `HOOKRELAY_API_KEY`; `/health` remains public.
 
-When `HOOKRELAY_API_KEY` is unset or empty, API authentication is disabled for local development. Endpoint secrets are stored in plaintext in SQLite, there is no encryption at rest. HookRelay is not ready for public deployment yet; keep the database file private and don't run it on a network you don't control.
+When `HOOKRELAY_API_KEY` is unset or empty, API authentication is disabled for local development. Endpoint secrets are stored in SQLite without encryption. HookRelay is not intended for public deployment; keep the database file private and don't run it on a network you don't control.
 
 ## Run locally
 
@@ -70,9 +72,9 @@ HookRelay tries delivery up to five times. The first attempt fires immediately; 
 
 To redeliver a past event, call `POST /v1/events/{event_id}/replay`. It works on any event regardless of its current status. A replay always creates a new pending event with a fresh ID; it never resets or otherwise modifies the source event. The new event uses the same endpoint and payload, starts fresh with zero attempts, and records the source event's ID in `source_event_id`. The API returns `202 Accepted` with the new event.
 
-The worker delivers a replay just like a newly submitted event. It gets its own delivery attempts and status, while the source event and its attempt history remain unchanged. Replays can be chained -- replaying a replay creates another new event with its own `source_event_id` pointing to the one before it.
+The worker delivers a replay just like a newly submitted event. It gets its own delivery attempts and status, while the source event and its attempt history remain unchanged. Replays can be chained. Replaying a replay creates another new event with its own `source_event_id` pointing to the one before it.
 
-If your receiver can't safely process the same event twice, make sure to check for duplicates before acting on a replayed event.
+If your receiver isn't idempotent, check for duplicate events before acting on a replayed one.
 
 ## Development
 
